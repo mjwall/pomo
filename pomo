@@ -15,11 +15,6 @@
 # - move to github
 # - add -h flag to give info
 # - bug - pause during read on the description exited upon return
-# - make notify happen before asking for description.  Easy to miss it is time
-# for next cycle
-# - move notify out so we can check for lib-notify, may play sound and add an
-# image
-# - test on mac
 # - make prereqs function to test for directory and lib-notify etc
 # - rework traps. Would like to CTRL-C and then CTRL-C again to quit
 
@@ -117,13 +112,15 @@ count_down() {
 
 work() {
   current_pomodoro=$(expr $COMPLETED_POMODOROS + 1)
+  alert "Duration is ${WORK_TIME}${TIME_INTERVAL}" "Starting Pomodoro ${current_pomodoro}" 
+
+  # time doesn't actually start until after you enter the description
   echo "Enter a description for Pomodoro ${current_pomodoro}"
   read info
 
   log "Pomodoro ${current_pomodoro}:"
   log "- started $(date)"
   log "- decription ${info}"
-  alert "Duration is ${WORK_TIME}${TIME_INTERVAL}" "Starting Pomodoro ${current_pomodoro}" 
   count_down $WORK_TIME
 
   COMPLETED_POMODOROS=$current_pomodoro
