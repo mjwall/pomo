@@ -166,6 +166,7 @@ setup() {
 }
 
 run() {
+  setup
   log "Pomodoros started at $(date)"
   echo "Starting pomodoros......"
   echo "Press CTRL-C to pause. While paused, you can enter notes or quit"
