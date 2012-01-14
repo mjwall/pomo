@@ -1,0 +1,140 @@
+#!/bin/bash
+# Pomodoro script
+#
+# Sleeps for $WORK_TIME and then rests for time $REST_TIME.  At the beginning
+# of each pomodoro, it will out put to the log file in ~/.pomodoro.  At the end
+# of each work cycle, you can add notes.  Uses lib-notify to post alerts about
+# time changes
+
+# TODO:
+# - bug - CTRL-C while paused seems to exit
+# - add ability to pass in number of pomodoro to start at
+# - also add option for time, rest, and long rest, maybe directory to log files
+# to whatelse
+# - add readme
+# - move to github
+# - add -h flag to give info
+# - bug - pause during read on the description exited upon return
+# - make notify happen before asking for description.  Easy to miss it is time
+# for next cycle
+# - move notify out so we can check for lib-notify, may play sound and add an
+# image
+# - test on mac
+# - make prereqs function to test for directory and lib-notify etc
+# - rework traps. Would like to CTRL-C and then CTRL-C again to quit
+
+TIME_INTERVAL=m #m for minutes, s for seconds (useful for debugging)
+WORK_TIME=25
+REST_TIME=5
+LONG_REST_TIME=20
+
+COMPLETED_POMODOROS=0
+POMO_LOG_DIR="${HOME}/.pomodoro"
+POMO_LOG_FILE="$(date "+%Y%m%d%H%M%S").log"
+POMO_LOG="${POMO_LOG_DIR}/${POMO_LOG_FILE}"
+#echo $POMO_LOG
+
+log() {
+  local msg=$1
+  echo "${msg}" >> $POMO_LOG
+}
+
+backspace() {
+  local msg=$1
+  strlen=$(expr length "${msg}")
+  strlen2=$(expr length "${msg}") #TODO: remove this
+  while [ "${strlen}" -ge 0 ]; do
+    echo -en "\b \b" #erase each character
+    strlen=$(expr $strlen - 1)
+  done
+}
+
+count_down() {
+  TIME=$1
+  while [ "${TIME}" -gt 0 ]; do
+    msg="${TIME}${TIME_INTERVAL} remaining"
+    echo -n "${msg}"
+    sleep "1${TIME_INTERVAL}"
+    backspace "${msg}"
+    TIME=$(expr $TIME - 1)
+  done
+}
+
+work() {
+  current_pomodoro=$(expr $COMPLETED_POMODOROS + 1)
+  echo "Enter a description for Pomodoro ${current_pomodoro}"
+  read info
+
+  log "Pomodoro ${current_pomodoro}:"
+  log "- started $(date)"
+  log "- decription ${info}"
+  notify-send "Starting Pomodoro ${current_pomodoro}" "Duration is ${WORK_TIME}${TIME_INTERVAL}"
+  count_down $WORK_TIME
+
+  COMPLETED_POMODOROS=$current_pomodoro
+  echo "Finished Pomodoro ${COMPLETED_POMODOROS}"
+  log "- finished $(date)"
+  echo ""
+}
+
+rest() {
+  if [ $(expr ${COMPLETED_POMODOROS} % 4) == 0 ]; then #TODO: should be -eq and needs to be tested
+    # every fourth pomodoro, take a longer break
+    THIS_REST=$LONG_REST_TIME
+  else
+    THIS_REST=$REST_TIME
+  fi
+  echo "Take a ${THIS_REST}${TIME_INTERVAL} break"
+  notify-send "Pomodoro ${COMPLETED_POMODOROS} over" "Take a ${THIS_REST}${TIME_INTERVAL} break"
+  count_down $THIS_REST
+  echo ""
+}
+
+quit() {
+  log "Pomodoros stopped at $(date)"
+  echo ""
+  local msg="You finished ${COMPLETED_POMODOROS} pomodoros, great work"
+  echo "${msg}"
+  notify-send "${msg}"
+  echo "Here is what you accomplished, see ${POMO_LOG}"
+  cat $POMO_LOG
+  exit $?
+}
+
+pause() {
+  echo ""
+  echo "Paused."
+  echo "Press enter to continue.  Anything else entered will be logged:"
+  #TODO: update echo above with quit
+  read extra
+  case "${extra}" in
+    "quit")
+      quit
+      ;;
+    *)
+      log "-- Paused at $(date)" #TODO: capture date before read
+      if [ ! -z "${extra}" ]; then
+        log "-- NOTE: ${extra}"
+      fi
+      echo "" #extra line on console
+  esac
+}
+
+# make sure log dir exists
+if [ ! -d "${POMO_LOG_DIR}" ]; then
+  echo "Log directory doesn't exist, creating ${POMO_LOG_DIR}"
+  mkdir "${POMO_LOG_DIR}"
+fi
+
+# trap ctrl-c to pause
+trap pause SIGINT
+
+log "Pomodoros started at $(date)"
+echo "Starting pomodoros......"
+echo "Press CTRL-C to pause. While paused, you can enter notes or quit"
+echo ""
+
+while true; do
+  work
+  rest
+done
