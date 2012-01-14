@@ -34,9 +34,15 @@ POMO_LOG_FILE="$(date "+%Y%m%d%H%M%S").log"
 POMO_LOG="${POMO_LOG_DIR}/${POMO_LOG_FILE}"
 #echo $POMO_LOG
 
-log() {
-  local msg=$1
-  echo "${msg}" >> $POMO_LOG
+script_dir() {
+  if [ -z "${SCRIPT_DIR}" ]; then
+    # even resolves symlinks, see
+    # http://stackoverflow.com/questions/59895/can-a-bash-script-tell-what-directory-its-stored-in
+    local SOURCE="${BASH_SOURCE[0]}"
+    while [ -h "$SOURCE" ] ; do SOURCE="$(readlink "$SOURCE")"; done
+    SCRIPT_DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+  fi
+  echo "${SCRIPT_DIR}"
 }
 
 os() {
@@ -58,16 +64,34 @@ os() {
   echo "${OS}"
 }
 
+log() {
+  local msg=$1
+  echo "${msg}" >> $POMO_LOG
+}
+
 alert() {
   local message=$1
   local header=$2
   local platform=$(os)
   if [ "${platform}" == "mac" ]; then
-    growlnotify -t "${header}" -m "${message}" -s 
+    growlnotify -t "${header}" -m "${message}" --image "$(script_dir)/tomato.png"
   elif [ "${platform}" == "linux" ]; then 
     notify-send "${header}" "${message}"
   else
     echo "You shouldn't have gotten here"
+    exit 1
+  fi
+}
+
+bell() {
+  local platform=$(os)
+  if [ "${platform}" == "mac" ]; then
+    afplay "$(script_dir)/CrystalBell.mp3"
+  elif [ "${platform}" == "linux" ]; then 
+    echo "Bell not implemented for linux yet"
+  else
+    echo "You shouldn't have gotten here"
+    exit 1
   fi
 }
 
@@ -109,6 +133,7 @@ work() {
 }
 
 rest() {
+  bell
   if [ $(expr ${COMPLETED_POMODOROS} % 4) == 0 ]; then #TODO: should be -eq and needs to be tested
     # every fourth pomodoro, take a longer break
     THIS_REST=$LONG_REST_TIME
@@ -127,6 +152,7 @@ quit() {
   local msg="You finished ${COMPLETED_POMODOROS} pomodoros, great work"
   echo "${msg}"
   alert "${msg}"
+  echo ""
   echo "Here is what you accomplished, see ${POMO_LOG}"
   cat $POMO_LOG
   exit $?
@@ -135,7 +161,7 @@ quit() {
 pause() {
   echo ""
   echo "Paused."
-  echo "Press enter to continue.  Anything else entered will be logged:"
+  echo "Press enter to continue.  Enter 'quit' to stop.  Anything else entered will be logged:"
   #TODO: update echo above with quit
   read extra
   case "${extra}" in
@@ -166,6 +192,7 @@ setup() {
 }
 
 run() {
+  script_dir
   setup
   log "Pomodoros started at $(date)"
   echo "Starting pomodoros......"
