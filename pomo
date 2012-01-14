@@ -23,9 +23,9 @@
 # - make prereqs function to test for directory and lib-notify etc
 # - rework traps. Would like to CTRL-C and then CTRL-C again to quit
 
-TIME_INTERVAL=m #m for minutes, s for seconds (useful for debugging)
-WORK_TIME=25
-REST_TIME=5
+TIME_INTERVAL=s #m for minutes, s for seconds (useful for debugging)
+WORK_TIME=5
+REST_TIME=3
 LONG_REST_TIME=20
 
 COMPLETED_POMODOROS=0
@@ -39,10 +39,41 @@ log() {
   echo "${msg}" >> $POMO_LOG
 }
 
+os() {
+  if [ -z "${OS}" ]; then
+    unamestr=$(uname)
+    case "${unamestr}" in
+      "Darwin")
+        OS="mac"
+        ;;
+      "Linux")
+        OS="linux"
+        ;;
+      *)
+        echo "Operating system '${unamestr}' not yet support"
+        exit 1
+        ;;
+    esac
+  fi
+  echo "${OS}"
+}
+
+alert() {
+  local message=$1
+  local header=$2
+  local platform=$(os)
+  if [ "${platform}" == "mac" ]; then
+    growlnotify -t "${header}" -m "${message}" -s 
+  elif [ "${platform}" == "linux" ]; then 
+    notify-send "${header}" "${message}"
+  else
+    echo "You shouldn't have gotten here"
+  fi
+}
+
 backspace() {
   local msg=$1
-  strlen=$(expr length "${msg}")
-  strlen2=$(expr length "${msg}") #TODO: remove this
+  strlen=${#msg}
   while [ "${strlen}" -ge 0 ]; do
     echo -en "\b \b" #erase each character
     strlen=$(expr $strlen - 1)
@@ -68,7 +99,7 @@ work() {
   log "Pomodoro ${current_pomodoro}:"
   log "- started $(date)"
   log "- decription ${info}"
-  notify-send "Starting Pomodoro ${current_pomodoro}" "Duration is ${WORK_TIME}${TIME_INTERVAL}"
+  alert "Duration is ${WORK_TIME}${TIME_INTERVAL}" "Starting Pomodoro ${current_pomodoro}" 
   count_down $WORK_TIME
 
   COMPLETED_POMODOROS=$current_pomodoro
@@ -85,7 +116,7 @@ rest() {
     THIS_REST=$REST_TIME
   fi
   echo "Take a ${THIS_REST}${TIME_INTERVAL} break"
-  notify-send "Pomodoro ${COMPLETED_POMODOROS} over" "Take a ${THIS_REST}${TIME_INTERVAL} break"
+  alert "Take a ${THIS_REST}${TIME_INTERVAL} break" "Pomodoro ${COMPLETED_POMODOROS} over" 
   count_down $THIS_REST
   echo ""
 }
@@ -95,7 +126,7 @@ quit() {
   echo ""
   local msg="You finished ${COMPLETED_POMODOROS} pomodoros, great work"
   echo "${msg}"
-  notify-send "${msg}"
+  alert "${msg}"
   echo "Here is what you accomplished, see ${POMO_LOG}"
   cat $POMO_LOG
   exit $?
@@ -120,21 +151,30 @@ pause() {
   esac
 }
 
-# make sure log dir exists
-if [ ! -d "${POMO_LOG_DIR}" ]; then
-  echo "Log directory doesn't exist, creating ${POMO_LOG_DIR}"
-  mkdir "${POMO_LOG_DIR}"
-fi
+setup() {
+  # make sure log dir exists
+  if [ ! -d "${POMO_LOG_DIR}" ]; then
+    echo "Log directory doesn't exist, creating ${POMO_LOG_DIR}"
+    mkdir "${POMO_LOG_DIR}"
+  fi
 
-# trap ctrl-c to pause
-trap pause SIGINT
+  # make sure lib-notify or growl are installed
+  # TOOD: implement this
 
-log "Pomodoros started at $(date)"
-echo "Starting pomodoros......"
-echo "Press CTRL-C to pause. While paused, you can enter notes or quit"
-echo ""
+  # trap ctrl-c to pause
+  trap pause SIGINT
+}
 
-while true; do
-  work
-  rest
-done
+run() {
+  log "Pomodoros started at $(date)"
+  echo "Starting pomodoros......"
+  echo "Press CTRL-C to pause. While paused, you can enter notes or quit"
+  echo ""
+
+  while true; do
+    work
+    rest
+  done
+}
+
+run
