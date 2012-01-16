@@ -146,7 +146,7 @@ rest() {
 quit() {
   log "Pomodoros stopped at $(date)"
   echo ""
-  local msg="You finished ${COMPLETED_POMODOROS} pomodoros, great work"
+  local msg="You finished ${COMPLETED_POMODOROS} pomodoros" "Great work"
   echo "${msg}"
   alert "${msg}"
   echo ""
@@ -156,6 +156,8 @@ quit() {
 }
 
 pause() {
+  trap -p
+  trap quit SIGINT SIGTERM
   echo ""
   echo "Paused."
   echo "Press enter to continue.  Enter 'quit' to stop.  Anything else entered will be logged:"
@@ -172,6 +174,8 @@ pause() {
       fi
       echo "" #extra line on console
   esac
+  # reset CTRL-C to pause
+  trap pause SIGINT SIGTERM
 }
 
 setup() {
@@ -185,7 +189,7 @@ setup() {
   # TOOD: implement this
 
   # trap ctrl-c to pause
-  trap pause SIGINT
+  trap pause SIGINT SIGTERM
 }
 
 run() {
