@@ -93,7 +93,7 @@ bell() {
 backspace() {
   local msg=$1
   strlen=${#msg}
-  while [ "${strlen}" -ge 0 ]; do
+  while [ "${strlen}" -gt 0 ]; do
     echo -en "\b \b" #erase each character
     strlen=$(expr $strlen - 1)
   done
@@ -103,7 +103,7 @@ count_down() {
   TIME=$1
   while [ "${TIME}" -gt 0 ]; do
     msg="${TIME}${TIME_INTERVAL} remaining"
-    echo -n "${msg}"
+    echo -en "${msg}"
     sleep "1${TIME_INTERVAL}"
     backspace "${msg}"
     TIME=$(expr $TIME - 1)
@@ -116,7 +116,7 @@ work() {
 
   # time doesn't actually start until after you enter the description
   echo "Enter a description for Pomodoro ${current_pomodoro}"
-  read info
+  read -e info
 
   log "Pomodoro ${current_pomodoro}:"
   log "- started $(date)"
@@ -146,36 +146,44 @@ rest() {
 quit() {
   log "Pomodoros stopped at $(date)"
   echo ""
-  local msg="You finished ${COMPLETED_POMODOROS} pomodoros" "Great work"
-  echo "${msg}"
-  alert "${msg}"
+  local msg="You finished ${COMPLETED_POMODOROS} pomodoros" 
+  local title="Great work"
+  echo "${title} ${msg}"
+  alert "${msg}" "${title}"
   echo ""
   echo "Here is what you accomplished, see ${POMO_LOG}"
   cat $POMO_LOG
   exit $?
 }
 
-pause() {
-  trap -p
-  trap quit SIGINT SIGTERM
+note() {
   echo ""
-  echo "Paused."
-  echo "Press enter to continue.  Enter 'quit' to stop.  Anything else entered will be logged:"
-  #TODO: update echo above with quit
-  read extra
-  case "${extra}" in
-    "quit")
+  echo "Enter a note"
+  read -e note
+  log "-- NOTE: ${note}"
+}
+
+pause() {
+  echo ""
+  echo "Paused: "
+  echo "Hit q to quit or n to enter a note. Anything else will continue"
+  log "-- Paused at $(date)" 
+  # Use IFS null to capture whitespace etc.  Must handle it yourself
+  # this almost works, but it requires read to run once before it sets up the
+  # override
+  while IFS= read -n 1 a; do
+    if [ "${a}" == 'q' ]; then
       quit
-      ;;
-    *)
-      log "-- Paused at $(date)" #TODO: capture date before read
-      if [ ! -z "${extra}" ]; then
-        log "-- NOTE: ${extra}"
-      fi
-      echo "" #extra line on console
-  esac
-  # reset CTRL-C to pause
-  trap pause SIGINT SIGTERM
+      break
+    elif [ "${a}" == 'n' ]; then
+      note
+      break
+    else
+      break
+    fi
+  done
+  echo "continuing..."
+  echo -e "\n"
 }
 
 setup() {
@@ -190,6 +198,7 @@ setup() {
 
   # trap ctrl-c to pause
   trap pause SIGINT SIGTERM
+
 }
 
 run() {
