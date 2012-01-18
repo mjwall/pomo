@@ -7,16 +7,16 @@
 # time changes
 
 # TODO:
-# - bug - CTRL-C while paused seems to exit
 # - add ability to pass in number of pomodoro to start at
 # - also add option for time, rest, and long rest, maybe directory to log files
 # to whatelse
 # - add readme
-# - move to github
 # - add -h flag to give info
-# - bug - pause during read on the description exited upon return
 # - make prereqs function to test for directory and lib-notify etc
 # - rework traps. Would like to CTRL-C and then CTRL-C again to quit
+# - pause while waiting for description enters blank for description and starts
+# count down
+# - Pause during countdown still returns with time remaining shifted right
 
 TIME_INTERVAL=s #m for minutes, s for seconds (useful for debugging)
 WORK_TIME=5
@@ -116,17 +116,15 @@ backspace() {
 
 
 count_down() {
-  TIME=$1
-  out "- Counting down ${TIME}${TIME_INTERVAL}\n"
+  local TIME=$1
   while [ "${TIME}" -gt 0 ]; do
-    local msg="${TIME}"
-    printf "%-b" "${msg}" #left justified
+    local msg=" ${TIME}${TIME_INTERVAL} remaining"
+    out "${msg}"
     sleep "1${TIME_INTERVAL}"
     backspace "${msg}"
     TIME=$(expr $TIME - 1)
   done
-  out "0\n"
-  unset TIME
+  out "${TIME}${TIME_INTERVAL} remaining\n"
 }
 
 work() {
@@ -134,7 +132,8 @@ work() {
   alert "Duration is ${WORK_TIME}${TIME_INTERVAL}" "Starting Pomodoro ${current_pomodoro}" 
 
   # time doesn't actually start until after you enter the description
-  local prompt="Enter a description for Pomodoro ${current_pomodoro}:\n"
+  out "Starting Pomodoro ${current_pomodoro}\n"
+  local prompt="Enter a description: "
   local info=$(get_input "${prompt}")
 
   log "Pomodoro ${current_pomodoro}:"
@@ -159,6 +158,7 @@ rest() {
   alert "${msg}" "Pomodoro ${COMPLETED_POMODOROS} over" 
   out "${msg}\n"
   count_down $THIS_REST
+  out "\n"
 }
 
 quit() {
@@ -174,12 +174,15 @@ quit() {
 }
 
 note() {
-  local prompt="Enter a note\n"
+  local prompt="\nEnter a note: "
   local note=$(get_input "${prompt}")
   log "-- NOTE: ${note}"
 }
 
-get_pause_key() {
+pause() {
+  out "- Paused: \n"
+  out "Hit q to quit or n to enter a note. Anything else will continue\n"
+  log "-- Paused at $(date)" 
   # Use IFS null to capture whitespace etc.  Must handle it yourself
   # this almost works, but it requires read to run once before it sets up the
   # override
@@ -194,22 +197,9 @@ get_pause_key() {
       break
     fi
   done
-}
-
-pause() {
-  out "- Paused: \n"
-  out "Hit q to quit or n to enter a note. Anything else will continue\n"
-  log "-- Paused at $(date)" 
-  get_pause_key
-  out "- Continuing: \n"
-  # redo the last echo
-  if [ ! -z "${TIME}" ]; then
-    # in count_down, reset the line
-    # local msg="${TIME}${TIME_INTERVAL} remaining"
-    out "\n"
-    #echo -n "${msg}"
-    #backspace "${msg}"
-  elif [ ! -z "${PROMPT}" ]; then
+  unset IFS
+  # redo the prompt if paused while waiting for input
+  if [ ! -z "${PROMPT}" ]; then
     out "${PROMPT}\n"
   fi
 }
