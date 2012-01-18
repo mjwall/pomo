@@ -59,6 +59,21 @@ os() {
   echo "${OS}"
 }
 
+out() {
+  local msg=$1
+  printf "%b" "${msg}"
+}
+
+get_input() {
+  PROMPT=$1
+  # hacky, if you don't redirect to stderr, the output is returned by the
+  # function
+  out "${PROMPT}" 1>&2
+  read -e input
+  unset PROMPT 
+  echo "${input}"
+}
+
 log() {
   local msg=$1
   echo "${msg}" >> $POMO_LOG
@@ -73,7 +88,7 @@ alert() {
   elif [ "${platform}" == "linux" ]; then 
     notify-send "${header}" "${message}"
   else
-    echo "You shouldn't have gotten here"
+    out "You shouldn't have gotten here\n"
     exit 1
   fi
 }
@@ -83,9 +98,9 @@ bell() {
   if [ "${platform}" == "mac" ]; then
     afplay "$(script_dir)/CrystalBell.mp3"
   elif [ "${platform}" == "linux" ]; then 
-    echo "Bell not implemented for linux yet"
+    out "Bell not implemented for linux yet\n"
   else
-    echo "You shouldn't have gotten here"
+    out "You shouldn't have gotten here\n"
     exit 1
   fi
 }
@@ -94,20 +109,24 @@ backspace() {
   local msg=$1
   strlen=${#msg}
   while [ "${strlen}" -gt 0 ]; do
-    echo -en "\b \b" #erase each character
+    out "\b \b" #erase each character
     strlen=$(expr $strlen - 1)
   done
 }
 
+
 count_down() {
   TIME=$1
+  out "- Counting down ${TIME}${TIME_INTERVAL}\n"
   while [ "${TIME}" -gt 0 ]; do
-    msg="${TIME}${TIME_INTERVAL} remaining"
-    echo -en "${msg}"
+    local msg="${TIME}"
+    printf "%-b" "${msg}" #left justified
     sleep "1${TIME_INTERVAL}"
     backspace "${msg}"
     TIME=$(expr $TIME - 1)
   done
+  out "0\n"
+  unset TIME
 }
 
 work() {
@@ -115,8 +134,8 @@ work() {
   alert "Duration is ${WORK_TIME}${TIME_INTERVAL}" "Starting Pomodoro ${current_pomodoro}" 
 
   # time doesn't actually start until after you enter the description
-  echo "Enter a description for Pomodoro ${current_pomodoro}"
-  read -e info
+  local prompt="Enter a description for Pomodoro ${current_pomodoro}:\n"
+  local info=$(get_input "${prompt}")
 
   log "Pomodoro ${current_pomodoro}:"
   log "- started $(date)"
@@ -124,23 +143,22 @@ work() {
   count_down $WORK_TIME
 
   COMPLETED_POMODOROS=$current_pomodoro
-  echo "Finished Pomodoro ${COMPLETED_POMODOROS}"
   log "- finished $(date)"
-  echo ""
+  out "Finished Pomodoro ${COMPLETED_POMODOROS}\n\n"
 }
 
 rest() {
   bell
-  if [ $(expr ${COMPLETED_POMODOROS} % 4) == 0 ]; then #TODO: should be -eq and needs to be tested
+  if [ $(expr ${COMPLETED_POMODOROS} % 4) -eq 0 ]; then 
     # every fourth pomodoro, take a longer break
     THIS_REST=$LONG_REST_TIME
   else
     THIS_REST=$REST_TIME
   fi
-  echo "Take a ${THIS_REST}${TIME_INTERVAL} break"
-  alert "Take a ${THIS_REST}${TIME_INTERVAL} break" "Pomodoro ${COMPLETED_POMODOROS} over" 
+  local msg="Take a ${THIS_REST}${TIME_INTERVAL} break"
+  alert "${msg}" "Pomodoro ${COMPLETED_POMODOROS} over" 
+  out "${msg}\n"
   count_down $THIS_REST
-  echo ""
 }
 
 quit() {
@@ -148,26 +166,20 @@ quit() {
   echo ""
   local msg="You finished ${COMPLETED_POMODOROS} pomodoros" 
   local title="Great work"
-  echo "${title} ${msg}"
+  out "${title} ${msg}\n\n"
   alert "${msg}" "${title}"
-  echo ""
-  echo "Here is what you accomplished, see ${POMO_LOG}"
+  out "Here is what you accomplished, see ${POMO_LOG}\n"
   cat $POMO_LOG
   exit $?
 }
 
 note() {
-  echo ""
-  echo "Enter a note"
-  read -e note
+  local prompt="Enter a note\n"
+  local note=$(get_input "${prompt}")
   log "-- NOTE: ${note}"
 }
 
-pause() {
-  echo ""
-  echo "Paused: "
-  echo "Hit q to quit or n to enter a note. Anything else will continue"
-  log "-- Paused at $(date)" 
+get_pause_key() {
   # Use IFS null to capture whitespace etc.  Must handle it yourself
   # this almost works, but it requires read to run once before it sets up the
   # override
@@ -182,8 +194,24 @@ pause() {
       break
     fi
   done
-  echo "continuing..."
-  echo -e "\n"
+}
+
+pause() {
+  out "- Paused: \n"
+  out "Hit q to quit or n to enter a note. Anything else will continue\n"
+  log "-- Paused at $(date)" 
+  get_pause_key
+  out "- Continuing: \n"
+  # redo the last echo
+  if [ ! -z "${TIME}" ]; then
+    # in count_down, reset the line
+    # local msg="${TIME}${TIME_INTERVAL} remaining"
+    out "\n"
+    #echo -n "${msg}"
+    #backspace "${msg}"
+  elif [ ! -z "${PROMPT}" ]; then
+    out "${PROMPT}\n"
+  fi
 }
 
 setup() {
