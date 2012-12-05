@@ -80,11 +80,12 @@ log() {
 }
 
 alert() {
-  local message=$1
-  local header=$2
+  local message=$1; shift
+  local header=$1; shift
+  local otherargs="$@" #allows you pass in other args
   local platform=$(os)
   if [ "${platform}" == "mac" ]; then
-    growlnotify -t "${header}" -m "${message}" --image "$(script_dir)/tomato.png"
+    growlnotify -t "${header}" -m "${message}" --image "$(script_dir)/tomato.png" "${otherargs}"
   elif [ "${platform}" == "linux" ]; then
     notify-send "${header}" "${message}"
   else
@@ -133,6 +134,7 @@ count_down() {
 
 work() {
   current_pomodoro=$(expr $COMPLETED_POMODOROS + 1)
+  alert "Enter a description" "Starting Pomodoro ${current_pomodoro}" -s
 
   # time doesn't actually start until after you enter the description
   out "Starting Pomodoro ${current_pomodoro}\n"
@@ -143,7 +145,7 @@ work() {
   log "- started $(date)"
   log "- decription ${info}"
 
-  alert "Duration is ${WORK_TIME}${TIME_INTERVAL}" "Starting Pomodoro ${current_pomodoro}"
+  alert "Duration is ${WORK_TIME}${TIME_INTERVAL}" "Begin"
   count_down $WORK_TIME
 
   COMPLETED_POMODOROS=$current_pomodoro
@@ -160,7 +162,7 @@ rest() {
     THIS_REST=$REST_TIME
   fi
   local msg="Take a ${THIS_REST}${TIME_INTERVAL} break"
-  alert "${msg}" "Pomodoro ${COMPLETED_POMODOROS} over"
+  alert "${msg}" "Pomodoro ${COMPLETED_POMODOROS} over" -s
   out "${msg}\n"
   count_down $THIS_REST
   out "\n"
@@ -172,7 +174,7 @@ quit() {
   local msg="You finished ${COMPLETED_POMODOROS} pomodoros"
   local title="Great work"
   out "${title} ${msg}\n\n"
-  alert "${msg}" "${title}"
+  alert "${msg}" "${title}" -s
   out "Here is what you accomplished, see ${POMO_LOG}\n"
   cat $POMO_LOG
   exit $?
