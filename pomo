@@ -18,9 +18,9 @@
 # count down
 # - Pause during countdown still returns with time remaining shifted right
 
-TIME_INTERVAL=s #m for minutes, s for seconds (useful for debugging)
-WORK_TIME=5
-REST_TIME=3
+TIME_INTERVAL=m #m for minutes, s for seconds (useful for debugging)
+WORK_TIME=25
+REST_TIME=5
 LONG_REST_TIME=20
 
 COMPLETED_POMODOROS=0
@@ -70,7 +70,7 @@ get_input() {
   # function
   out "${PROMPT}" 1>&2
   read -e input
-  unset PROMPT 
+  unset PROMPT
   echo "${input}"
 }
 
@@ -85,7 +85,7 @@ alert() {
   local platform=$(os)
   if [ "${platform}" == "mac" ]; then
     growlnotify -t "${header}" -m "${message}" --image "$(script_dir)/tomato.png"
-  elif [ "${platform}" == "linux" ]; then 
+  elif [ "${platform}" == "linux" ]; then
     notify-send "${header}" "${message}"
   else
     out "You shouldn't have gotten here\n"
@@ -97,7 +97,7 @@ bell() {
   local platform=$(os)
   if [ "${platform}" == "mac" ]; then
     afplay "$(script_dir)/CrystalBell.mp3"
-  elif [ "${platform}" == "linux" ]; then 
+  elif [ "${platform}" == "linux" ]; then
     out "Bell not implemented for linux yet\n"
   else
     out "You shouldn't have gotten here\n"
@@ -120,7 +120,11 @@ count_down() {
   while [ "${TIME}" -gt 0 ]; do
     local msg=" ${TIME}${TIME_INTERVAL} remaining"
     out "${msg}"
-    sleep "1${TIME_INTERVAL}"
+    if [ "${TIME_INTERVAL}" == "m" ]; then
+      sleep 60
+    else
+      sleep 1
+    fi
     backspace "${msg}"
     TIME=$(expr $TIME - 1)
   done
@@ -129,7 +133,6 @@ count_down() {
 
 work() {
   current_pomodoro=$(expr $COMPLETED_POMODOROS + 1)
-  alert "Duration is ${WORK_TIME}${TIME_INTERVAL}" "Starting Pomodoro ${current_pomodoro}" 
 
   # time doesn't actually start until after you enter the description
   out "Starting Pomodoro ${current_pomodoro}\n"
@@ -139,6 +142,8 @@ work() {
   log "Pomodoro ${current_pomodoro}:"
   log "- started $(date)"
   log "- decription ${info}"
+
+  alert "Duration is ${WORK_TIME}${TIME_INTERVAL}" "Starting Pomodoro ${current_pomodoro}"
   count_down $WORK_TIME
 
   COMPLETED_POMODOROS=$current_pomodoro
@@ -148,14 +153,14 @@ work() {
 
 rest() {
   bell
-  if [ $(expr ${COMPLETED_POMODOROS} % 4) -eq 0 ]; then 
+  if [ $(expr ${COMPLETED_POMODOROS} % 4) -eq 0 ]; then
     # every fourth pomodoro, take a longer break
     THIS_REST=$LONG_REST_TIME
   else
     THIS_REST=$REST_TIME
   fi
   local msg="Take a ${THIS_REST}${TIME_INTERVAL} break"
-  alert "${msg}" "Pomodoro ${COMPLETED_POMODOROS} over" 
+  alert "${msg}" "Pomodoro ${COMPLETED_POMODOROS} over"
   out "${msg}\n"
   count_down $THIS_REST
   out "\n"
@@ -164,7 +169,7 @@ rest() {
 quit() {
   log "Pomodoros stopped at $(date)"
   echo ""
-  local msg="You finished ${COMPLETED_POMODOROS} pomodoros" 
+  local msg="You finished ${COMPLETED_POMODOROS} pomodoros"
   local title="Great work"
   out "${title} ${msg}\n\n"
   alert "${msg}" "${title}"
@@ -182,7 +187,7 @@ note() {
 pause() {
   out "- Paused: \n"
   out "Hit q to quit or n to enter a note. Anything else will continue\n"
-  log "-- Paused at $(date)" 
+  log "-- Paused at $(date)"
   # Use IFS null to capture whitespace etc.  Must handle it yourself
   # this almost works, but it requires read to run once before it sets up the
   # override
