@@ -96,7 +96,7 @@ alert() {
 bell() {
   local platform=$(os)
   if [ "${platform}" == "mac" ]; then
-    afplay "$(script_dir)/CrystalBell.mp3"
+    afplay "$(script_dir)/CrystalBell.mp3" > /dev/null 2>&1
   elif [ "${platform}" == "linux" ]; then
     out "Bell not implemented for linux yet\n"
   else
