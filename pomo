@@ -1,43 +1,70 @@
 #!/bin/bash
 # Pomodoro script
 #
-# Sleeps for $WORK_TIME and then rests for time $REST_TIME.  At the beginning
-# of each pomodoro, it will out put to the log file in ~/.pomodoro.  At the end
-# of each work cycle, you can add notes.  Uses lib-notify to post alerts about
-# time changes
+# Sleeps for $WORK_TIME and then rests for time $REST_TIME.  Press CTRL-C to
+# pause.  You can enter a note while paused.  Press CTRL-\ to quit.
+#
+# Your Pomodoro's will be logged to a file and displayed after you quit.
 
 # TODO:
 # - add ability to pass in number of pomodoro to start at
-# - also add option for time, rest, and long rest, maybe directory to log files
-# to whatelse
+# - also add option for time, rest, and long rest
+# - maybe option for directory to log files
+# - make cycle of short/long breaks configurable
 # - add readme
 # - add -h flag to give info
 # - make prereqs function to test for directory and lib-notify etc
-# - rework traps. Would like to CTRL-C and then CTRL-C again to quit
-# - pause while waiting for description enters blank for description and starts
-# count down
-# - Pause during countdown still returns with time remaining shifted right
+
+#set -x #debug
 
 TIME_INTERVAL=m #m for minutes, s for seconds (useful for debugging)
 WORK_TIME=25
 REST_TIME=5
-LONG_REST_TIME=20
-
+LONG_REST_TIME=20 #every four, could make that configurable
 COMPLETED_POMODOROS=0
 POMO_LOG_DIR="${HOME}/.pomodoro"
-POMO_LOG_FILE="$(date "+%Y%m%d%H%M%S").log"
+POMO_LOG_FILE="$(date "+%Y%m%d%H%M%s").log"
 POMO_LOG="${POMO_LOG_DIR}/${POMO_LOG_FILE}"
-#echo $POMO_LOG
 
 script_dir() {
   if [ -z "${SCRIPT_DIR}" ]; then
-    # even resolves symlinks, see
-    # http://stackoverflow.com/questions/59895/can-a-bash-script-tell-what-directory-its-stored-in
+    # even resolves symlinks, see http://stackoverflow.com/questions/59895/can-a-bash-script-tell-what-directory-its-stored-in
     local SOURCE="${BASH_SOURCE[0]}"
     while [ -h "$SOURCE" ] ; do SOURCE="$(readlink "$SOURCE")"; done
     SCRIPT_DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
   fi
   echo "${SCRIPT_DIR}"
+}
+
+out() {
+  local msg=$1
+  printf "%b" "${msg}\n" | tee -a ${POMO_LOG}
+}
+
+alert() {
+  local message=$1; shift
+  local header=$1; shift
+  local otherargs="$@" #allows you pass in other args
+  out "${message}"
+  if [ "$(os)" == "mac" ]; then
+    growlnotify -t "${header}" -m "${message}" --image "$(script_dir)/tomato.png" "${otherargs}"
+  elif [ "$(os)" == "linux" ]; then
+    notify-send "${header}" "${message}"
+  else
+    out "You shouldn't have gotten here"
+    exit 1
+  fi
+}
+
+bell() {
+  if [ "$(os)" == "mac" ]; then
+    afplay "$(script_dir)/CrystalBell.mp3" > /dev/null 2>&1
+  elif [ "$(os)" == "linux" ]; then
+    out "Bell not implemented for linux yet"
+  else
+    out "You shouldn't have gotten here"
+    exit 1
+  fi
 }
 
 os() {
@@ -59,185 +86,91 @@ os() {
   echo "${OS}"
 }
 
-out() {
-  local msg=$1
-  printf "%b" "${msg}"
-}
-
 get_input() {
-  PROMPT=$1
-  # hacky, if you don't redirect to stderr, the output is returned by the
-  # function
-  out "${PROMPT}" 1>&2
-  read -e input
-  unset PROMPT
+  local PROMPT=$1
+  trap "out \"No Description\" 1>&2; exit" SIGINT
+  read -e -p "${PROMPT}" input
+  if [ "${input}x" != "x" ]; then
+    # no need to log blank stuff
+    printf "%b" "${PROMPT}${input}\n" >> ${POMO_LOG} #send to log
+  fi
   echo "${input}"
 }
-
-log() {
-  local msg=$1
-  echo "${msg}" >> $POMO_LOG
-}
-
-alert() {
-  local message=$1; shift
-  local header=$1; shift
-  local otherargs="$@" #allows you pass in other args
-  local platform=$(os)
-  if [ "${platform}" == "mac" ]; then
-    growlnotify -t "${header}" -m "${message}" --image "$(script_dir)/tomato.png" "${otherargs}"
-  elif [ "${platform}" == "linux" ]; then
-    notify-send "${header}" "${message}"
-  else
-    out "You shouldn't have gotten here\n"
-    exit 1
-  fi
-}
-
-bell() {
-  local platform=$(os)
-  if [ "${platform}" == "mac" ]; then
-    afplay "$(script_dir)/CrystalBell.mp3" > /dev/null 2>&1
-  elif [ "${platform}" == "linux" ]; then
-    out "Bell not implemented for linux yet\n"
-  else
-    out "You shouldn't have gotten here\n"
-    exit 1
-  fi
-}
-
-backspace() {
-  local msg=$1
-  strlen=${#msg}
-  while [ "${strlen}" -gt 0 ]; do
-    out "\b \b" #erase each character
-    strlen=$(expr $strlen - 1)
-  done
-}
-
 
 count_down() {
   local TIME=$1
   while [ "${TIME}" -gt 0 ]; do
-    local msg=" ${TIME}${TIME_INTERVAL} remaining"
-    out "${msg}"
+    local msg="${TIME}${TIME_INTERVAL} remaining"
+    echo -ne "\r  ${msg}             "
     if [ "${TIME_INTERVAL}" == "m" ]; then
       sleep 60
     else
       sleep 1
     fi
-    backspace "${msg}"
     TIME=$(expr $TIME - 1)
   done
-  out "${TIME}${TIME_INTERVAL} remaining\n"
+  echo -ne "\r  ${TIME}${TIME_INTERVAL} remaining             \n"
 }
 
 work() {
+  out ""
   current_pomodoro=$(expr $COMPLETED_POMODOROS + 1)
-  alert "Enter a description" "Starting Pomodoro ${current_pomodoro}" -s
+  alert "Pomodoro ${current_pomodoro}" "Starting" -s
+  local description=$(get_input "  Description: ")
 
-  # time doesn't actually start until after you enter the description
-  out "Starting Pomodoro ${current_pomodoro}\n"
-  local prompt="Enter a description: "
-  local info=$(get_input "${prompt}")
-
-  log "Pomodoro ${current_pomodoro}:"
-  log "- started $(date)"
-  log "- decription ${info}"
-
-  alert "Duration is ${WORK_TIME}${TIME_INTERVAL}" "Begin"
+  alert "  Duration: ${WORK_TIME}/${TIME_INTERVAL}" "Begin"
+  out "  Start: $(now)"
   count_down $WORK_TIME
-
   COMPLETED_POMODOROS=$current_pomodoro
-  log "- finished $(date)"
-  out "Finished Pomodoro ${COMPLETED_POMODOROS}\n\n"
+  out "  End: $(now)"
 }
 
 rest() {
   bell
+  # every fourth pomodoro, take a longer break
   if [ $(expr ${COMPLETED_POMODOROS} % 4) -eq 0 ]; then
-    # every fourth pomodoro, take a longer break
-    THIS_REST=$LONG_REST_TIME
+    alert "Long break" "Take ${LONG_REST_TIME}/${TIME_INTERVAL}"
+    out "  Duration: ${LONG_REST_TIME}/${TIME_INTERVAL}"
+    count_down $LONG_REST_TIME
   else
-    THIS_REST=$REST_TIME
+    alert "Short break" "Take ${REST_TIME}/${TIME_INTERVAL}"
+    out "  Duration: ${REST_TIME}/${TIME_INTERVAL}"
+    count_down $REST_TIME
   fi
-  local msg="Take a ${THIS_REST}${TIME_INTERVAL} break"
-  alert "${msg}" "Pomodoro ${COMPLETED_POMODOROS} over" -s
-  out "${msg}\n"
-  count_down $THIS_REST
-  out "\n"
+  out "-----------------------------"
 }
 
-quit() {
-  log "Pomodoros stopped at $(date)"
-  echo ""
-  local msg="You finished ${COMPLETED_POMODOROS} pomodoros"
-  local title="Great work"
-  out "${title} ${msg}\n\n"
-  alert "${msg}" "${title}" -s
-  out "Here is what you accomplished, see ${POMO_LOG}\n"
+interupt() {
+  #echo "SIGINT"
+  echo -ne "\n"
+  out "  Pause: $(now)"
+  echo -ne "  Enter note or hit return to continue\n"
+  local get_note=$(get_input "  Note: ")
+  out "  Resume: $(now)"
+}
+
+now() {
+  echo "$(date "+%H:%m:%S %D")"
+}
+
+stop() {
+  #echo "SIGQUIT"
+  alert "You completed ${COMPLETED_POMODOROS}" "All done."
+  echo "Here is the log"
   cat $POMO_LOG
-  exit $?
+  echo "View it in $POMO_LOG"
+  exit 0
 }
 
-note() {
-  local prompt="\nEnter a note: "
-  local note=$(get_input "${prompt}")
-  log "-- NOTE: ${note}"
-}
+if [ ! -d "${POMO_LOG_DIR}" ]; then
+  mkdir "${POMO_LOG_DIR}"
+fi
 
-pause() {
-  out "- Paused: \n"
-  out "Hit q to quit or n to enter a note. Anything else will continue\n"
-  log "-- Paused at $(date)"
-  # Use IFS null to capture whitespace etc.  Must handle it yourself
-  # this almost works, but it requires read to run once before it sets up the
-  # override
-  while IFS= read -n 1 a; do
-    if [ "${a}" == 'q' ]; then
-      quit
-      break
-    elif [ "${a}" == 'n' ]; then
-      note
-      break
-    else
-      break
-    fi
-  done
-  unset IFS
-  # redo the prompt if paused while waiting for input
-  if [ ! -z "${PROMPT}" ]; then
-    out "${PROMPT}\n"
-  fi
-}
-
-setup() {
-  # make sure log dir exists
-  if [ ! -d "${POMO_LOG_DIR}" ]; then
-    echo "Log directory doesn't exist, creating ${POMO_LOG_DIR}"
-    mkdir "${POMO_LOG_DIR}"
-  fi
-
-  # make sure lib-notify or growl are installed
-  # TOOD: implement this
-
-  # trap ctrl-c to pause
-  trap pause SIGINT SIGTERM
-
-}
-
-run() {
-  script_dir
-  setup
-  log "Pomodoros started at $(date)"
-  echo "Starting pomodoros......"
-  echo "Press CTRL-C to pause. While paused, you can enter notes or quit"
-  echo ""
-
-  while true; do
-    work
-    rest
-  done
-}
-
-run
+trap interupt  SIGINT
+trap stop      SIGQUIT
+out "Starting Pomodoros......"
+out "Press CTRL-C if you are interupted.  Press CTRL-\ when you want to quit"
+while true; do
+  work
+  rest
+done
