@@ -4,7 +4,8 @@
 # Sleeps for $WORK_TIME and then rests for time $REST_TIME.  Press CTRL-C to
 # pause.  You can enter a note while paused.  Press CTRL-\ to quit.
 #
-# Your Pomodoro's will be logged to a file and displayed after you quit.
+# Your Pomodoro's will be logged to a file, the name of which is displayed
+# after you quit.
 
 # TODO:
 # - add ability to pass in number of pomodoro to start at
@@ -26,6 +27,10 @@ POMO_LOG_DIR="${HOME}/.pomodoro"
 POMO_LOG_FILE="$(date "+%Y%m%d%H%M%s").log"
 POMO_LOG="${POMO_LOG_DIR}/${POMO_LOG_FILE}"
 
+# to use the sound, you must move the included CrystalBell.aiff to
+# /System/Library/Sounds, otherwise the default sound will play.  The
+# CrystalBell is included from http://soundjax.com/ and converted to aiff with iTunes
+
 script_dir() {
   if [ -z "${SCRIPT_DIR}" ]; then
     # even resolves symlinks, see http://stackoverflow.com/questions/59895/can-a-bash-script-tell-what-directory-its-stored-in
@@ -37,30 +42,35 @@ script_dir() {
 }
 
 out() {
+  # output to screen and log
   local msg=$1
   printf "%b" "${msg}\n" | tee -a ${POMO_LOG}
+}
+
+log() {
+  # only output to log
+  local msg=$1
+  printf "%b" "${msg}\n" >> ${POMO_LOG}
 }
 
 alert() {
   local message=$1; shift
   local header=$1; shift
-  local otherargs="$@" #allows you pass in other args
-  out "${message}"
-  if [ "$(os)" == "mac" ]; then
-    growlnotify -t "${header}" -m "${message}" --image "$(script_dir)/tomato.png" "${otherargs}"
-  elif [ "$(os)" == "linux" ]; then
-    notify-send "${header}" "${message}"
+  local sound=$1; shift
+  if [ "${header}x" != "${x}" ]; then
+    out "${header} : ${message}"
   else
-    out "You shouldn't have gotten here"
-    exit 1
+    out "${message}"
   fi
-}
-
-bell() {
+  local play_sound=""
+  if [ "${sound}x" != "x" ]; then
+    play_sound=" sound name \"${sound}\""
+  fi
   if [ "$(os)" == "mac" ]; then
-    afplay "$(script_dir)/CrystalBell.mp3" > /dev/null 2>&1
+    osascript -e "display notification \"${message}\" with title \"${header}\" ${play_sound}"
   elif [ "$(os)" == "linux" ]; then
-    out "Bell not implemented for linux yet"
+    # sound not implemented yet for Linux
+    notify-send "${header}" "${message}"
   else
     out "You shouldn't have gotten here"
     exit 1
@@ -90,10 +100,6 @@ get_input() {
   local PROMPT=$1
   trap "out \"No Description\" 1>&2; exit" SIGINT
   read -e -p "${PROMPT}" input
-  if [ "${input}x" != "x" ]; then
-    # no need to log blank stuff
-    printf "%b" "${PROMPT}${input}\n" >> ${POMO_LOG} #send to log
-  fi
   echo "${input}"
 }
 
@@ -115,26 +121,22 @@ count_down() {
 work() {
   out ""
   current_pomodoro=$(expr $COMPLETED_POMODOROS + 1)
-  alert "Pomodoro ${current_pomodoro}" "Starting" -s
+  alert "Pomodoro ${current_pomodoro}" "Starting" "Basso"
   local description=$(get_input "  Description: ")
-
-  alert "  Duration: ${WORK_TIME}/${TIME_INTERVAL}" "Begin"
-  out "  Start: $(now)"
+  log "  Description: ${description}"
+  alert "  Duration: ${WORK_TIME}/${TIME_INTERVAL}\n  Start: $(now)" "  Begin"
   count_down $WORK_TIME
   COMPLETED_POMODOROS=$current_pomodoro
   out "  End: $(now)"
 }
 
 rest() {
-  bell
   # every fourth pomodoro, take a longer break
   if [ $(expr ${COMPLETED_POMODOROS} % 4) -eq 0 ]; then
-    alert "Long break" "Take ${LONG_REST_TIME}/${TIME_INTERVAL}"
-    out "  Duration: ${LONG_REST_TIME}/${TIME_INTERVAL}"
+    alert "Long break" "Take ${LONG_REST_TIME}/${TIME_INTERVAL}" "CrystalBell"
     count_down $LONG_REST_TIME
   else
-    alert "Short break" "Take ${REST_TIME}/${TIME_INTERVAL}"
-    out "  Duration: ${REST_TIME}/${TIME_INTERVAL}"
+    alert "Short break" "Take ${REST_TIME}/${TIME_INTERVAL}" "CrystalBell"
     count_down $REST_TIME
   fi
   out "-----------------------------"
@@ -143,22 +145,24 @@ rest() {
 interupt() {
   #echo "SIGINT"
   echo -ne "\n"
+  out "  ----"
   out "  Pause: $(now)"
   echo -ne "  Enter note or hit return to continue\n"
-  local get_note=$(get_input "  Note: ")
+  local note=$(get_input "  Note: ")
+  log "  Note: ${note}"
   out "  Resume: $(now)"
 }
 
 now() {
-  echo "$(date "+%H:%m:%S %D")"
+  echo "$(date "+%H:%M:%S %D")"
 }
 
 stop() {
   #echo "SIGQUIT"
-  alert "You completed ${COMPLETED_POMODOROS}" "All done."
-  echo "Here is the log"
-  cat $POMO_LOG
-  echo "View it in $POMO_LOG"
+  alert "You completed ${COMPLETED_POMODOROS} pomodoros" "\n\n----\nAll done." "Glass"
+  #echo "Here is the log"
+  #cat $POMO_LOG
+  echo "View log at $POMO_LOG"
   exit 0
 }
 
