@@ -1,3 +1,7 @@
 Bash script for the Pomodoro Technique
 
-More to come
+This is a simple script to help track pomodoros.  It captures interruptions and logs info to a file for later review.
+
+See http://pomodorotechnique.com/ for details about the technique.
+
+To run, put 'pomo' on your path and run it.
